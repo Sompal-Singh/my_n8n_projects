@@ -1,0 +1,337 @@
+{
+  "name": "Form Submission Survey Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Donor Screening Survey",
+        "formDescription": "Please answer the following question, so that we can assess your suitability as blood donor and also to counsel you. Thanks",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Did you suffered from Jaundice within last 6 months?",
+              "fieldType": "radio",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Yes"
+                  },
+                  {
+                    "option": "No"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Did you had a Dog bite within last month?",
+              "fieldType": "radio",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "No"
+                  },
+                  {
+                    "option": "Yes"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thanks for Your response."
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -1456,
+        -336
+      ],
+      "id": "d726af24-8970-469e-a6e1-e1d2fc8b4531",
+      "name": "On form submission",
+      "webhookId": "a2bbe5ae-4d2b-4c9e-b832-b25f9fa5e250"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/home/node/.n8n-files/*.pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1152,
+        -96
+      ],
+      "id": "2058cadc-22ba-413b-bfc8-dc88354800ef",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Check the following information from a survey form and using local files assess whether the donor is suitable for Bllod Donation as per national guidelines and GSR 166.\n{{ $json.medicalHistoryBlock }}\n\nAssess answer to each question and state the questions on which your conclusion is based on.\nUse your taining data if information is not available in local files.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -624,
+        -336
+      ],
+      "id": "4464abb5-9bc5-4254-a728-d90a21763a13",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        144
+      ],
+      "id": "9d0f515e-aed6-45e6-b072-a392b0aa5e61",
+      "name": "Embeddings Google Gemini",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "BokT1uknyTzsQ5wc",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -944,
+        -176
+      ],
+      "id": "9aeb5cac-88e4-47d4-8939-16a83e0ab05f",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "BokT1uknyTzsQ5wc",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "value": "vector_store_key",
+          "mode": "list",
+          "cachedResultName": "vector_store_key"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.2,
+      "position": [
+        -768,
+        -96
+      ],
+      "id": "32094af2-7477-431c-be24-6b36f7c376c7",
+      "name": "Insert Data to Store"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        160
+      ],
+      "id": "869b980c-684b-423a-be7c-dd68c4653ee9",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "knowledge_base",
+        "toolDescription": "Use this knowledge base to answer questions from the user",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "vector_store_key"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.2,
+      "position": [
+        -352,
+        -160
+      ],
+      "id": "e666e10b-d6f1-414d-8a1c-86a6349a23ae",
+      "name": "Query Data Tool"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop through incoming items and format fields as Q&A pairs\nconst newItems = [];\n\nfor (const item of $input.all()) {\n  const qaPairs = Object.entries(item.json).map(([question, answer]) => {\n    return {\n      question: question,\n      answer: answer\n    };\n  });\n\n  // Push an item containing the array of questions and answers\n  newItems.push({ json: { qaPairs } });\n}\n\nreturn newItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1264,
+        -336
+      ],
+      "id": "94f25d21-dea0-4249-b399-21b2e5763cc3",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -1072,
+        -336
+      ],
+      "id": "ea84691b-8835-40c1-b4a1-a2af0bd64b5e",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Grab the incoming item\nconst items = $input.all();\nconst firstItem = items[0]?.json;\n\n// 2. Safely navigate to the nested qaPairs array\nconst qaPairs = firstItem?.data?.[0]?.qaPairs || [];\n\n// 3. Loop through pairs, format them, and filter out metadata questions\nconst formattedPairs = qaPairs\n  .filter(item => item.question !== 'submittedAt' && item.question !== 'formMode')\n  .map(item => `Question: ${item.question} Answer: ${item.answer}`);\n\n// 4. Join all pairs into one big block of text separated by double newlines\nconst textChunk = formattedPairs.join('; ');\n\n// 5. Output the single text chunk\nreturn [{\n  json: {\n    medicalHistoryBlock: textChunk\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -864,
+        -336
+      ],
+      "id": "3f9bb665-7b33-46e6-a3c7-9729252ec262",
+      "name": "Code in JavaScript1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Insert Data to Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert Data to Store",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Query Data Tool",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert Data to Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Data Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "63e97279-5b23-49b7-b9d1-1e05d841d881",
+  "meta": {
+    "instanceId": "cac25907702a786f029419b09c1eb108a4b592964faa08f8ca7f79057284ed7f"
+  },
+  "nodeGroups": [],
+  "id": "QZQO4jzr5qDt6cmN",
+  "tags": []
+}
