@@ -1,0 +1,117 @@
+{
+  "name": "Evolution API",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        -208
+      ],
+      "id": "939270c9-8735-4d93-a5e1-cdcc91d1590e",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "sompalinstance",
+        "remoteJid": "919810873046",
+        "messageText": "Hello Ji",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        32,
+        -208
+      ],
+      "id": "a45b1f8b-660e-481a-877e-6974aebd6707",
+      "name": "Enviar texto",
+      "credentials": {
+        "evolutionApi": {
+          "id": "X8YhFfzaJ6Prv5e8",
+          "name": "Evolution account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-inbound",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -256,
+        -16
+      ],
+      "id": "e4b5eb7d-d54a-4787-86c3-0ceb937526f3",
+      "name": "Webhook",
+      "webhookId": "71ee93b9-05b9-4d83-a59a-2675e99da6b5"
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "sompalinstance",
+        "remoteJid": "919810873046",
+        "messageText": "Hello Ji",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        32,
+        -16
+      ],
+      "id": "0bf3dc26-b44d-419c-aeb0-f7d685bcfcde",
+      "name": "Enviar texto with Webhook",
+      "credentials": {
+        "evolutionApi": {
+          "id": "X8YhFfzaJ6Prv5e8",
+          "name": "Evolution account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Enviar texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Enviar texto with Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "6097692e-a45e-4cb6-9f21-5c0beb2b7307",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cac25907702a786f029419b09c1eb108a4b592964faa08f8ca7f79057284ed7f"
+  },
+  "nodeGroups": [],
+  "id": "h1djHJcFaOpCq8Ew",
+  "tags": []
+}
