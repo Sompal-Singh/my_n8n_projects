@@ -1,0 +1,596 @@
+{
+  "name": "SheetToPostgres V2",
+  "nodes": [
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "import re\nfrom datetime import datetime\nimport json\n\n\n# ---------------------------------------------------------\n# Helper function to check if a string is in MM/DD/YYYY\n# format and represents a valid date\n# ---------------------------------------------------------\ndef is_date_string(value):\n    if not isinstance(value, str):\n        return False\n\n    # Check exact MM/DD/YYYY format\n    if not re.match(r\"^\\d{2}/\\d{2}/\\d{4}$\", value):\n        return False\n\n    try:\n        month, day, year = map(int, value.split(\"/\"))\n\n        # Validate actual calendar date\n        datetime(year, month, day)\n\n        return True\n\n    except ValueError:\n        return False\n\n\n# ---------------------------------------------------------\n# Get table name\n# ---------------------------------------------------------\n\n# Access the fields compiled by the Edit Fields node\n# Temporary debug code\n#first_item = _items[0] if _items else {}\n#available_keys = list(first_item.keys())\n#raise Exception(f\"Python sees these keys: {available_keys} | Total items: {len(_items)}\")\n\nfor item in _items:\n    # 1. Unpack the legacy n8n 'json' wrapper\n    internal_json = item.get('json', {})\n    \n    # 2. Extract your fields from the inner dictionary\n    sheet_name = internal_json.get('sheet_name')\n    raw_data_string = internal_json.get('complete_data')\n    \n    # 3. Safely parse the row data string if it exists\n    rows = []\n    if raw_data_string:\n        try:\n            rows = json.loads(raw_data_string)\n        except Exception:\n            rows = []\n  \ntable_name = f'ai_table_{sheet_name}'\n\n# ---------------------------------------------------------\n# Get rows from \"fetch sheet data\"\n# ---------------------------------------------------------\n\n# ---------------------------------------------------------\n# Collect all column names dynamically\n# ---------------------------------------------------------\n\nall_columns = set()\n\nfor row in rows:\n    row_json = row[\"json\"]\n    for col in row_json.keys():\n        all_columns.add(col)\n\n\n# ---------------------------------------------------------\n# Ensure ai_table_identifier is always first\n# ---------------------------------------------------------\n\noriginal_columns = [\"ai_table_identifier\"] + list(all_columns)\n\n\n# ---------------------------------------------------------\n# Detect currency\n# ---------------------------------------------------------\n\ndef detect_currency(values):\n\n    currency_symbols = {\n        \"₹\": \"INR\",\n        \"$\": \"USD\",\n        \"€\": \"EUR\",\n        \"£\": \"GBP\",\n        \"¥\": \"JPY\",\n        \"₩\": \"KRW\",\n        \"฿\": \"THB\",\n        \"zł\": \"PLN\",\n        \"kr\": \"SEK\",\n        \"R$\": \"BRL\",\n        \"C$\": \"CAD\",\n        \"A$\": \"AUD\"\n    }\n\n    detected_currency = None\n\n    for value in values:\n\n        if isinstance(value, str) and value.strip() != \"\":\n\n            value = value.strip()\n\n            for symbol, code in currency_symbols.items():\n\n                if value.startswith(symbol):\n                    detected_currency = code\n                    break\n\n            if detected_currency:\n                break\n\n    return detected_currency\n\n\n# ---------------------------------------------------------\n# Generate consistent column names\n# ---------------------------------------------------------\n\ndef generate_column_name(original_name, type_info):\n\n    if type_info.get(\"isCurrency\", False):\n\n        currency_code = type_info[\"currencyCode\"].lower()\n\n        return f\"{original_name}_{currency_code}\"\n\n    return original_name\n\n\n# ---------------------------------------------------------\n# Infer column types and transform names\n# ---------------------------------------------------------\n\ncolumn_mapping = {}\n\n\nfor col in original_columns:\n\n    # Default type\n    type_info = {\n        \"type\": \"TEXT\"\n    }\n\n    if col != \"ai_table_identifier\":\n\n        # Collect non-null values for this column\n        sample_values = []\n\n        for row in rows:\n\n            row_json = row[\"json\"]\n\n            if col in row_json:\n\n                value = row_json[col]\n\n                if value is not None:\n                    sample_values.append(value)\n\n\n        # -------------------------------------------------\n        # Check currency first\n        # -------------------------------------------------\n\n        currency_code = detect_currency(sample_values)\n\n        if currency_code:\n\n            type_info = {\n                \"type\": \"DECIMAL(15,2)\",\n                \"isCurrency\": True,\n                \"currencyCode\": currency_code\n            }\n\n\n        # -------------------------------------------------\n        # Check date\n        # -------------------------------------------------\n\n        elif (\n            len(sample_values) > 0\n            and all(is_date_string(value) for value in sample_values)\n        ):\n\n            type_info = {\n                \"type\": \"TIMESTAMP\"\n            }\n\n\n    # Generate new column name\n    new_column_name = generate_column_name(\n        col,\n        type_info\n    )\n\n    column_mapping[col] = {\n        \"newName\": new_column_name,\n        \"typeInfo\": type_info\n    }\n\n\n# ---------------------------------------------------------\n# Final column names\n# ---------------------------------------------------------\n\nmapped_columns = []\n\nfor col in original_columns:\n\n    if col in column_mapping:\n\n        mapped_columns.append(\n            column_mapping[col][\"newName\"]\n        )\n\n    else:\n\n        mapped_columns.append(col)\n\n\n# ---------------------------------------------------------\n# Define SQL columns\n# ---------------------------------------------------------\n\ncolumn_definitions = []\n\n# First column\ncolumn_definitions.append(\n    '\"ai_table_identifier\" UUID PRIMARY KEY DEFAULT gen_random_uuid()'\n)\n\n\n# Remaining columns\nfor col in mapped_columns[1:]:\n\n    # Find original column corresponding to mapped column\n    original_col = None\n\n    for key, mapping in column_mapping.items():\n\n        if mapping[\"newName\"] == col:\n\n            original_col = key\n            break\n\n\n    # Get inferred type\n    inferred_type = column_mapping[original_col][\"typeInfo\"][\"type\"]\n\n\n    # Use TIMESTAMP for date columns\n    if inferred_type == \"TIMESTAMP\":\n\n        sql_type = \"TIMESTAMP\"\n\n    else:\n\n        sql_type = \"TEXT\"\n\n\n    column_definitions.append(\n        f'\"{col}\" {sql_type}'\n    )\n\n\n# ---------------------------------------------------------\n# Create CREATE TABLE query\n# ---------------------------------------------------------\n\ncolumn_definitions_sql = \", \".join(column_definitions)\n\ncreate_table_query = (\n    f\"CREATE TABLE IF NOT EXISTS {table_name} \"\n    f\"({column_definitions_sql});\"\n)\n\n\n# ---------------------------------------------------------\n# Return result to n8n\n# ---------------------------------------------------------\n\nreturn [\n    {\n        \"json\": {\n            \"query\": create_table_query,\n            \"columnMapping\": column_mapping\n        }\n    }\n]"
+      },
+      "id": "3305e48e-5511-4733-a090-32e131a398ca",
+      "name": "create table query",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        960,
+        448
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "from datetime import datetime\nimport re\nimport json\n\noutput_items = []\n\n# --- Helper Functions ---\n\ndef is_valid_timestamp(value):\n    try:\n        if isinstance(value, (int, float)):\n            return False\n        datetime.fromisoformat(str(value).replace('Z', '+00:00'))\n        return True\n    except ValueError:\n        try:\n            datetime.strptime(str(value), \"%Y-%m-%dT%H:%M:%S.%fZ\")\n            return True\n        except ValueError:\n            return False\n\ndef get_currency_symbol(value):\n    if not isinstance(value, str):\n        return None\n    currency_symbols = ['₹', '$', '€', '£', '¥', '₩', '฿', 'zł', 'kr', 'R$', 'C$', 'A$']\n    cleaned_val = value.strip()\n    for symbol in currency_symbols:\n        if cleaned_val.startswith(symbol):\n            return symbol\n    return None\n\ndef normalize_currency_value(value, currency_symbol):\n    if not isinstance(value, str) or not currency_symbol:\n        return value\n    try:\n        numeric_part = value.replace(currency_symbol, '').replace(',', '')\n        return float(numeric_part)\n    except ValueError:\n        return None\n\ndef normalize_percentage_value(value):\n    if not isinstance(value, str):\n        return value\n    if not value.strip().endswith('%'):\n        return value\n    try:\n        numeric_part = value.replace('%', '')\n        return float(numeric_part) / 100.0\n    except ValueError:\n        return None\n\ndef parse_date_string(value):\n    if isinstance(value, str) and re.match(r'^\\d{2}/\\d{2}/\\d{4}$', value):\n        try:\n            date_obj = datetime.strptime(value, \"%m/%d/%Y\")\n            return date_obj.isoformat() + \"Z\"\n        except ValueError:\n            return None\n    return value\n\n\n# --- Main Logic Loop ---\n\nfor item in _items:\n    # Unpack the legacy 'json' wrapper safely\n    internal_data = item.get('json', item)\n    \n    sheet_name = internal_data.get('sheet_name', 'default')\n    \n    # FIX 1: Safely parse column_mapping if it arrived as a string\n    raw_mapping = internal_data.get('column_mapping') or {}\n    if isinstance(raw_mapping, str):\n        try:\n            column_mapping = json.loads(raw_mapping)\n        except Exception:\n            column_mapping = {}\n    else:\n        column_mapping = raw_mapping\n\n    # FIX 2: Safely parse rows_data if it arrived as a string\n    raw_rows = internal_data.get('rows_data') or []\n    if isinstance(raw_rows, str):\n        try:\n            rows = json.loads(raw_rows)\n        except Exception:\n            rows = []\n    else:\n        rows = raw_rows\n\n    table_name = f\"ai_table_{sheet_name}\"\n    \n    all_columns = []\n    seen_columns = set()\n    \n    for row in rows:\n        # Handle cases where rows are double-nested in a 'json' key\n        row_json = row.get('json', row) if isinstance(row, dict) else row\n        \n        # FIX 3: Ensure row_json is a real dictionary before parsing keys\n        if isinstance(row_json, str):\n            try:\n                row_json = json.loads(row_json)\n            except Exception:\n                row_json = {}\n                \n        if isinstance(row_json, dict):\n            for col in row_json.keys():\n                if col not in seen_columns:\n                    seen_columns.add(col)\n                    all_columns.append(col)\n\n    mapped_columns = []\n    for col in all_columns:\n        if isinstance(column_mapping, dict) and col in column_mapping and isinstance(column_mapping[col], dict) and 'newName' in column_mapping[col]:\n            mapped_columns.append(column_mapping[col]['newName'])\n        else:\n            mapped_columns.append(col)\n\n    formatted_rows = []\n    for row in rows:\n        row_json = row.get('json', row) if isinstance(row, dict) else row\n        if isinstance(row_json, str):\n            try:\n                row_json = json.loads(row_json)\n            except Exception:\n                row_json = {}\n\n        formatted_row = {}\n        \n        for index, col in enumerate(all_columns):\n            mapped_col = mapped_columns[index]\n            value = row_json.get(col) if isinstance(row_json, dict) else None\n            \n            col_map_info = column_mapping.get(col, {}) if isinstance(column_mapping, dict) else {}\n            type_info = col_map_info.get('typeInfo', {'type': 'TEXT'}) if isinstance(col_map_info, dict) else {'type': 'TEXT'}\n            \n            if value == \"\" or value is None:\n                value = None\n            elif type_info.get('isCurrency'):\n                symbol = get_currency_symbol(value)\n                value = normalize_currency_value(value, symbol) if symbol else None\n            elif type_info.get('isPercentage'):\n                if isinstance(value, str) and value.strip().endswith('%'):\n                    value = normalize_percentage_value(value)\n                else:\n                    try:\n                        value = float(value) / 100.0\n                    except (ValueError, TypeError):\n                        value = None\n            elif type_info.get('type') in [\"DECIMAL(15,2)\", \"INTEGER\"]:\n                if isinstance(value, str):\n                    try:\n                        value = float(value.replace(',', ''))\n                    except ValueError:\n                        value = None\n                elif isinstance(value, (int, float)):\n                    value = float(value)\n                else:\n                    value = None\n            elif type_info.get('type') == \"BOOLEAN\":\n                if isinstance(value, str):\n                    lowercased = value.strip().lower()\n                    if lowercased == \"true\":\n                        value = True\n                    elif lowercased == \"false\":\n                        value = False\n                    else:\n                        value = None\n                else:\n                    value = bool(value)\n            elif type_info.get('type') == \"TIMESTAMP\":\n                if isinstance(value, str) and re.match(r'^\\d{2}/\\d{2}/\\d{4}$', value):\n                    value = parse_date_string(value)\n                elif is_valid_timestamp(value):\n                    try:\n                        value = str(value).replace('Z', '')\n                        value = datetime.fromisoformat(value).isoformat() + \"Z\"\n                    except ValueError:\n                        value = None\n                else:\n                    value = None\n            elif type_info.get('type') == \"TEXT\":\n                value = str(value) if value is not None else None\n                \n            formatted_row[mapped_col] = value\n        formatted_rows.append(formatted_row)\n\n    if not formatted_rows or not mapped_columns:\n        output_items.append({'json': {'query': '', 'parameters': []}})\n        continue\n\n    value_placeholders_list = []\n    placeholder_counter = 1\n    \n    for row_idx in range(len(formatted_rows)):\n        row_placeholders = []\n        for col_idx in range(len(mapped_columns)):\n            row_placeholders.append(f\"${placeholder_counter}\")\n            placeholder_counter += 1\n        value_placeholders_list.append(f\"({', '.join(row_placeholders)})\")\n        \n    value_placeholders = \", \".join(value_placeholders_list)\n\n    escaped_cols = [f'\"{col}\"' for col in mapped_columns]\n    insert_query = f\"INSERT INTO {table_name} ({', '.join(escaped_cols)}) VALUES {value_placeholders};\"\n\n    parameters = []\n    for row in formatted_rows:\n        for col in mapped_columns:\n            parameters.append(row.get(col))\n\n    output_items.append({\n        'json': {\n            'query': insert_query,\n            'parameters': parameters\n        }\n    })\n\nreturn output_items\n"
+      },
+      "id": "012b456e-383e-428b-9699-118bf6c628ca",
+      "name": "create insertion query",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1632,
+        448
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {}
+          ]
+        },
+        "triggerOn": "specificFile",
+        "fileToWatch": {
+          "__rl": true,
+          "value": "1GMe2E2TLZcOTC2MYXFZiXNELN6Yj8_UuCGd3hGALqaI",
+          "mode": "list",
+          "cachedResultName": "Churn",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1GMe2E2TLZcOTC2MYXFZiXNELN6Yj8_UuCGd3hGALqaI/edit?usp=drivesdk"
+        }
+      },
+      "id": "b0d4a42a-3a56-4f65-97fa-7759b4557e34",
+      "name": "Google Drive Trigger",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "position": [
+        -464,
+        336
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "HODzV5loMIeXKhY0",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "query_executer",
+        "description": "Call this tool to execute a query. Remember that it should be in a postgreSQL query structure.",
+        "workflowId": {
+          "__rl": true,
+          "value": "P75bzG5A7LCEDIeY",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/P75bzG5A7LCEDIeY"
+        },
+        "specifyInputSchema": true,
+        "schemaType": "manual",
+        "inputSchema": "{\n\"type\": \"object\",\n\"properties\": {\n\t\"sql\": {\n\t\t\"type\": \"string\",\n\t\t\"description\": \"A SQL query based on the users question and database schema.\"\n\t\t}\n\t}\n}"
+      },
+      "id": "013f38c8-5873-493d-9cd3-e62f33ec76d9",
+      "name": "execute_query_tool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "position": [
+        1536,
+        1008
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {}
+      },
+      "id": "39d11119-4440-4571-8381-9d0b4a713ab1",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "position": [
+        896,
+        1024
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ur06bm13C0BhdUzm",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "get_postgres_schema",
+        "description": "Call this tool to retrieve the schema of all the tables inside of the database. A string will be retrieved with the name of the table and its columns, each table is separated by \\n\\n.",
+        "workflowId": {
+          "__rl": true,
+          "value": "Z8tTrxOBj3Ul33Xs",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/Z8tTrxOBj3Ul33Xs"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "id": "b5b7fef8-8f48-4c8a-8e3f-8b70cf2dbe99",
+      "name": "get_postgres_schema",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "position": [
+        1296,
+        1008
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "619ce84c-0a50-4f88-8e55-0ce529aea1fc",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              },
+              "leftValue": "={{ $('table exists?').item.json.exists }}",
+              "rightValue": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bb138f62-891d-4630-8970-61547be2bae1",
+      "name": "is not in database",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        432,
+        336
+      ],
+      "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT EXISTS (\n    SELECT 1 \n    FROM information_schema.tables \n    WHERE table_name = 'ai_table_{{ $json.sheet_name }}'\n);\n",
+        "options": {}
+      },
+      "id": "9d42b06a-1196-47a3-8037-6a21fb868e4f",
+      "name": "table exists?",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        0,
+        336
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "id": "BCTU028mTBL8KAJC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "={{ $('FileURLSheetName').item.json.table_url }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('FileURLSheetName').item.json.sheet_name }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "a1f503dc-1699-4630-9902-b2688032dd35",
+      "name": "fetch sheet data",
+      "type": "n8n-nodes-base.googleSheets",
+      "position": [
+        208,
+        336
+      ],
+      "typeVersion": 4.5,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "6KOg09wVzQcZHqbb",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DROP TABLE IF EXISTS ai_table_{{ $('change_this').item.json.sheet_name }} CASCADE;",
+        "options": {}
+      },
+      "id": "0b58d8f6-8f9b-4f60-b2d7-07c3e1e89afa",
+      "name": "remove table",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        448,
+        608
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "id": "BCTU028mTBL8KAJC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.query }}",
+        "options": {}
+      },
+      "id": "369cbde5-63e9-4421-97f0-c2239ab9e76f",
+      "name": "create table",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        1184,
+        448
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "id": "BCTU028mTBL8KAJC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{$json.query}}",
+        "options": {
+          "queryReplacement": "={{$json.parameters}}"
+        }
+      },
+      "id": "4754b904-9c1c-4dd1-afdc-1bff7b7154ac",
+      "name": "perform insertion",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        1824,
+        448
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "id": "BCTU028mTBL8KAJC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "=## Role\nYou are a **Database Query Assistant** specializing in generating PostgreSQL queries based on natural language questions. You analyze database schemas, construct appropriate SQL queries, and provide clear explanations of results.\n\n## Tools\n1. `get_postgres_schema`: Retrieves the complete database schema (tables and columns)\n2. `execute_query_tool`: Executes SQL queries with the following input format:\n   ```json\n   {\n     \"sql\": \"Your SQL query here\"\n   }\n   ```\n\n## Process Flow\n\n### 1. Analyze the Question\n- Identify the **data entities** being requested (products, customers, orders, etc.)\n- Determine the **query type** (COUNT, AVG, SUM, SELECT, etc.)\n- Extract any **filters** or **conditions** mentioned\n\n### 2. Fetch and Analyze Schema\n- Call `get_postgres_schema` to retrieve database structure\n- Identify relevant tables and columns that match the entities in the question\n- Prioritize exact matches, then semantic matches\n\n### 3. Query Construction\n- Build case-insensitive queries using `LOWER(column) LIKE LOWER('%value%')`\n- Filter out NULL or empty values with appropriate WHERE clauses\n- Use joins when information spans multiple tables\n- Apply aggregations (COUNT, SUM, AVG) as needed\n\n### 4. Query Execution\n- Execute query using the `execute_query_tool` with proper formatting\n- If results require further processing, perform calculations as needed\n\n### 5. Result Presentation\n- Format results in a conversational, easy-to-understand manner\n- Explain how the data was retrieved and any calculations performed\n- When appropriate, suggest further questions the user might want to ask\n\n## Best Practices\n- Use parameterized queries to prevent SQL injection\n- Implement proper error handling\n- Respond with \"NOT_ENOUGH_INFO\" when the question lacks specificity\n- Always verify table/column existence before attempting queries\n- Use explicit JOINs instead of implicit joins\n- Limit large result sets when appropriate\n\n## Numeric Validation (IMPORTANT)\nWhen validating or filtering numeric values in string columns:\n1. **AVOID** complex regular expressions with `~` operator as they cause syntax errors\n2. Use these safer alternatives instead:\n   ```sql\n   -- Simple numeric check without regex\n   WHERE column_name IS NOT NULL AND trim(column_name) != '' AND column_name NOT LIKE '%[^0-9.]%'\n   \n   -- For type casting with validation\n   WHERE column_name IS NOT NULL AND trim(column_name) != '' AND column_name ~ '[0-9]'\n   \n   -- Safe numeric conversion\n   WHERE CASE WHEN column_name ~ '[0-9]' THEN TRUE ELSE FALSE END\n   ```\n3. For simple pattern matching, use LIKE instead of regex when possible\n4. When CAST is needed, always guard against invalid values:\n   ```sql\n   SELECT SUM(CASE WHEN column_name ~ '[0-9]' THEN CAST(column_name AS NUMERIC) ELSE 0 END) AS total\n   ```\n\n## Response Structure\n1. **Analysis**: Brief mention of how you understood the question\n2. **Query**: The SQL statement used (in code block format)\n3. **Results**: Clear presentation of the data found\n4. **Explanation**: Simple description of how the data was retrieved\n\n## Examples\n\n### Example 1: Basic Counting Query\n**Question**: \"How many products are in the inventory?\"\n\n**Process**:\n1. Analyze schema to find product/inventory tables\n2. Construct a COUNT query on the relevant table\n3. Execute the query\n4. Present the count with context\n\n**SQL**:\n```sql\nSELECT COUNT(*) AS product_count \nFROM products \nWHERE quantity IS NOT NULL;\n```\n\n**Response**:\n\"There are 1,250 products currently in the inventory. This count includes all items with a non-null quantity value in the products table.\"\n\n### Example 2: Filtered Aggregation Query\n**Question**: \"What is the average order value for premium customers?\"\n\n**Process**:\n1. Identify relevant tables (orders, customers)\n2. Determine join conditions\n3. Apply filters for \"premium\" customers\n4. Calculate average\n\n**SQL**:\n```sql\nSELECT AVG(o.total_amount) AS avg_order_value\nFROM orders o\nJOIN customers c ON o.customer_id = c.id\nWHERE LOWER(c.customer_type) = LOWER('premium')\nAND o.total_amount IS NOT NULL;\n```\n\n**Response**:\n\"Premium customers spend an average of $85.42 per order. This was calculated by averaging the total_amount from all orders placed by customers with a 'premium' customer type.\"\n\n### Example 3: Numeric Calculation from String Column\n**Question**: \"What is the total of all ratings?\"\n\n**Process**:\n1. Find the ratings table and column\n2. Use safe numeric validation\n3. Sum the values\n\n**SQL**:\n```sql\nSELECT SUM(CASE WHEN rating ~ '[0-9]' THEN CAST(rating AS NUMERIC) ELSE 0 END) AS total_rating\nFROM ratings\nWHERE rating IS NOT NULL AND trim(rating) != '';\n```\n\n**Response**:\n\"The sum of all ratings is 4,285. This calculation includes all valid numeric ratings from the ratings table.\"\n\n### Example 4: Date Range Aggregation for Revenue  \n**Question**: \"How much did I make last week?\"  \n\n**Process**:  \n1. Identify the sales table and relevant columns (e.g., `sale_date` for dates and `revenue_amount` for revenue).  \n2. Use PostgreSQL date functions (`date_trunc` and interval arithmetic) to calculate the date range for the previous week.  \n3. Sum the revenue within the computed date range.  \n\n**SQL**:  \n```sql\nSELECT SUM(revenue_amount) AS total_revenue\nFROM sales_data\nWHERE sale_date >= date_trunc('week', CURRENT_DATE) - INTERVAL '1 week'\n  AND sale_date < date_trunc('week', CURRENT_DATE);\n```  \n\n**Response**:  \n\"Last week's total revenue is calculated by summing the `revenue_amount` for records where the `sale_date` falls within the previous week. This query uses date functions to dynamically determine the correct date range.\"\n\nToday's date: {{ $now }}",
+          "maxIterations": 5
+        }
+      },
+      "id": "701684ac-0365-4f80-9cb1-7f55d7b51296",
+      "name": "AI Agent With SQL Query Prompt",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        1040,
+        768
+      ],
+      "typeVersion": 1.7
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "908ed843-f848-4290-9cdb-f195d2189d7c",
+              "name": "table_url",
+              "type": "string",
+              "value": "https://docs.google.com/spreadsheets/d/1GMe2E2TLZcOTC2MYXFZiXNELN6Yj8_UuCGd3hGALqaI"
+            },
+            {
+              "id": "50f8afaf-0a6c-43ee-9157-79408fe3617a",
+              "name": "sheet_name",
+              "type": "string",
+              "value": "ChurnSheet"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "573db420-4cff-46da-9d3f-e18ca40a0608",
+      "name": "FileURLSheetName",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        -224,
+        336
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        688,
+        768
+      ],
+      "id": "50cd0cd7-dbf5-4d4c-bf49-b30c77f5eea7",
+      "name": "When chat message received",
+      "webhookId": "b5f463ab-4f5a-4ff0-9d61-ebbc7e67e0db"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2f4a9ca5-1bc1-4576-8011-2c43079f55ed",
+              "name": "sheet_name",
+              "value": "={{ $('FileURLSheetName').first().json.sheet_name }}",
+              "type": "string"
+            },
+            {
+              "id": "4e5d9523-b6cf-4a64-b351-e3a9a02f2d5b",
+              "name": "=complete_data",
+              "value": "={{ $('fetch sheet data').all() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        752,
+        448
+      ],
+      "id": "b9e0d8a0-e38e-40b3-be44-a0b4b2ff0b20",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "52f8fe41-9430-40c0-a3f0-df8a158298cf",
+              "name": "sheet_name",
+              "value": "={{ $('FileURLSheetName').first().json.sheet_name }}",
+              "type": "string"
+            },
+            {
+              "id": "f8e77b90-ff3b-4af4-b795-aa1750887f71",
+              "name": "rows_data",
+              "value": "={{ $('fetch sheet data').all() }}",
+              "type": "string"
+            },
+            {
+              "id": "99ef5a52-361c-489e-ab84-2e0b02006c7d",
+              "name": "column_mapping",
+              "value": "={{ $('create table query').first().json.columnMapping }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1392,
+        448
+      ],
+      "id": "49c646da-b634-47be-af38-8dcee89df1f3",
+      "name": "Edit Fields1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "table exists?": {
+      "main": [
+        [
+          {
+            "node": "fetch sheet data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "fetch sheet data": {
+      "main": [
+        [
+          {
+            "node": "is not in database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create table query": {
+      "main": [
+        [
+          {
+            "node": "create table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "execute_query_tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent With SQL Query Prompt",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "is not in database": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "remove table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_postgres_schema": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent With SQL Query Prompt",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "FileURLSheetName",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create insertion query": {
+      "main": [
+        [
+          {
+            "node": "perform insertion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent With SQL Query Prompt",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FileURLSheetName": {
+      "main": [
+        [
+          {
+            "node": "table exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent With SQL Query Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "remove table": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create table": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "create table query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "create insertion query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "28763be9-4494-4d49-a679-fedc6641f7eb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e62efc14cb233f1d65e8b428b1fc9924a840161673333dc2a424f2820ee64fa5"
+  },
+  "nodeGroups": [],
+  "id": "FrOWehCFcHL3NAjz",
+  "tags": []
+}

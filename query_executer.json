@@ -1,0 +1,99 @@
+{
+  "name": "query_executer",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e2f94fb1-3deb-466a-a36c-e3476511d5f2",
+              "name": "response",
+              "type": "string",
+              "value": "={{ $json }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2e1e1498-6b70-4721-b9c9-c3940472918f",
+      "name": "response output",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        -80,
+        -112
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.query.sql }}",
+        "options": {}
+      },
+      "id": "1c09160a-4c27-414a-af52-3c6b11d832aa",
+      "name": "sql query executor",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        -272,
+        -112
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "id": "BCTU028mTBL8KAJC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "6ae857ba-e142-4e32-9a24-dfdff90a2c34",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        -480,
+        -112
+      ],
+      "typeVersion": 1
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "sql query executor": {
+      "main": [
+        [
+          {
+            "node": "response output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "sql query executor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4544f3ce-dc97-41eb-9389-4f9841b22ea0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e62efc14cb233f1d65e8b428b1fc9924a840161673333dc2a424f2820ee64fa5"
+  },
+  "nodeGroups": [],
+  "id": "P75bzG5A7LCEDIeY",
+  "tags": []
+}

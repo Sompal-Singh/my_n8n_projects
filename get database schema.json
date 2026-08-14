@@ -1,0 +1,90 @@
+{
+  "name": "get database schema",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    t.schemaname,\n    t.tablename,\n    c.column_name,\n    c.data_type\nFROM \n    pg_catalog.pg_tables t\nJOIN \n    information_schema.columns c\n    ON t.schemaname = c.table_schema\n    AND t.tablename = c.table_name\nWHERE \n    t.schemaname = 'public' AND c.table_name = 'ai_table_churnsheet'\nORDER BY \n    t.tablename, c.ordinal_position;",
+        "options": {}
+      },
+      "id": "520478ee-44cf-479b-badb-4aa221e9f0f0",
+      "name": "schema finder",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        -368,
+        -192
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "id": "BCTU028mTBL8KAJC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# Initialize an empty dictionary to group columns by table name\ntables = {}\n\n# 1. Loop through all incoming items\nfor item in _items:\n    # Safely handle potential legacy 'json' wrappers\n    internal_data = item.get('json', item)\n    \n    if not internal_data:\n        continue\n        \n    # Extract fields from the item\n    tablename = internal_data.get('tablename')\n    schemaname = internal_data.get('schemaname')\n    column_name = internal_data.get('column_name')\n    data_type = internal_data.get('data_type')\n    \n    # Skip processing if critical fields are missing\n    if not tablename or not column_name or not data_type:\n        continue\n        \n    # If the table isn't tracked yet, initialize it\n    if tablename not in tables:\n        tables[tablename] = {\n            'schema': schemaname or 'public',  # Fallback to public if null\n            'columns': []\n        }\n        \n    # Append the formatted string \"column_name (data_type)\" to the list\n    tables[tablename]['columns'].append(f\"{column_name} ({data_type})\")\n\n# 2. Build the output text lines\nresult_lines = []\nfor tablename, table_info in tables.items():\n    schema = table_info['schema']\n    columns_str = \", \".join(table_info['columns'])\n    \n    line = f\"Table {tablename} (Schema: {schema}) has columns: {columns_str}\"\n    result_lines.append(line)\n\n# Join the blocks with double newlines exactly like the JS version\ntransformed_schema = \"\\n\\n\".join(result_lines)\n\n# 3. Return the string wrapped inside n8n's expected list structure\nreturn [\n    {\n        \"json\": {\n            \"data\": transformed_schema\n        }\n    }\n]\n"
+      },
+      "id": "0a872905-b4f4-4876-aa37-f72b2f2ce6d2",
+      "name": "schema to string",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -144,
+        -192
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {},
+      "id": "9358d30c-f511-47eb-9673-f9b2b2b55cfc",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        -608,
+        -192
+      ],
+      "typeVersion": 1
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "schema finder": {
+      "main": [
+        [
+          {
+            "node": "schema to string",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "schema finder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4b761b26-9c50-41c5-b6b7-bd6798991901",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e62efc14cb233f1d65e8b428b1fc9924a840161673333dc2a424f2820ee64fa5"
+  },
+  "nodeGroups": [],
+  "id": "Z8tTrxOBj3Ul33Xs",
+  "tags": []
+}
