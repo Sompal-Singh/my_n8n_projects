@@ -1,0 +1,155 @@
+{
+  "name": "DoCorrelation",
+  "nodes": [
+    {
+      "parameters": {
+        "fileSelector": "=/home/node/.n8n-files/Churn.csv",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -560,
+        -240
+      ],
+      "id": "b7157e2e-6e5d-45c8-b984-dc8f7d158ddb",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"column_a\": \"MonthlyCharges\",\n  \"column_b\": \"TotalCharges\"\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -768,
+        -240
+      ],
+      "id": "9df636ca-6c27-415b-bbcc-701729dd96aa",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -384,
+        -240
+      ],
+      "id": "8d092e09-55d4-48b9-9c66-d9bda8fb2602",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "### python\nimport pandas as pd\nimport scipy.stats as stats\nimport json  # Make sure json is imported at the top\n\n# 1. Retrieve all incoming items from the previous node\nraw_items = _items\nfor item in _items:\n    # 1. Unpack the legacy n8n 'json' wrapper\n    internal_json = item.get('json', {})\n    \n    # 2. Extract your fields from the inner dictionary\n    target_col_a = internal_json.get('column_a')\n    target_col_b = internal_json.get('column_b')\n    raw_data_string = internal_json.get('complete_data')\n    \n    # 3. Safely parse the row data string if it exists\n    rows = []\n    if raw_data_string:\n        try:\n            rows = json.loads(raw_data_string)\n        except Exception:\n            rows = []\n\n\n# 2. Extract the 'json' dictionary from each n8n item object\njson_data = [item[\"json\"] for item in rows]\n\n# 3. Create the Pandas DataFrame\ndf = pd.DataFrame(json_data)\n\n# 4. Verify Columns\n# Fallback check: Verify if the requested columns exist in the CSV\nif target_col_a not in df.columns or target_col_b not in df.columns:\n    return [{\"json\": {\n        \"error\": f\"Columns not found. Available CSV columns are: {list(df.columns)}\"\n    }}]\n\n# Convert targeted CSV columns into clean numeric Pandas Series\ns1 = pd.to_numeric(df[target_col_a], errors='coerce')\ns2 = pd.to_numeric(df[target_col_b], errors='coerce')\n\n# 4. EXECUTE STATISTICAL WORKFLOWS\nresult = {\"meta\": {\"rows_processed\": len(df), \"analysis\": \"correlation\"}}\n\ncorr = s1.corr(s2)\nresult[\"metrics\"] = {\"correlation_coefficient\": float(corr)}\n\n# Return result\n# Return payload back to the AI Agent\nreturn [{\"json\": result}]\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        -240
+      ],
+      "id": "251342a0-8916-443a-b2d9-3a97f84c2b62",
+      "name": "CodeCorrelation"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d701193a-a499-41a5-8e4e-a03e252d39ed",
+              "name": "column_a",
+              "value": "={{ $('When Executed by Another Workflow').item.json.column_a }}",
+              "type": "string"
+            },
+            {
+              "id": "37de06a8-e286-4b54-9612-0d1b15ce51d0",
+              "name": "column_b",
+              "value": "={{ $('When Executed by Another Workflow').item.json.column_b }}",
+              "type": "string"
+            },
+            {
+              "id": "0d0c0059-8888-43aa-986d-313574a48174",
+              "name": "complete_data",
+              "value": "={{ $('Extract from File').all() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -208,
+        -240
+      ],
+      "id": "5aefc493-29de-4d21-b881-7b221562b901",
+      "name": "Edit Fields"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "CodeCorrelation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "52206eb0-a4d5-4c67-ad35-8acfd3fac88a",
+  "meta": {
+    "instanceId": "1ee6d140a4e059ea8cb88f8f10033ef9f7d8a7b7fb5a1e33071610020febef13"
+  },
+  "nodeGroups": [],
+  "id": "eiINqBicY6Pqsm1s",
+  "tags": []
+}

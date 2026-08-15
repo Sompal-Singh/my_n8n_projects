@@ -1,0 +1,237 @@
+{
+  "name": "MyDataAnalysis V4",
+  "nodes": [
+    {
+      "parameters": {
+        "fileSelector": "=/home/node/.n8n-files/Churn.csv",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -640,
+        -368
+      ],
+      "id": "6145b171-7aa5-4ccb-a853-529f6f629380",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -448,
+        -368
+      ],
+      "id": "ab663ed9-a939-4360-bc52-d65729ee7956",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=User Prompt: The user is request is as follows::\n{{ $('When chat message received').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "Background: You are a data science assistant. Your job is to answer users' questions about statistical analysis of data. \n\nContext: When the user requests a statistical analysis involving two variables: \n1. Identify the exact names of the two dataset columns from the user's request.\n2. Identify the requested statistical analysis. Supported analysis types include:\n    a. correlation\n    b. t_test\n    c. descriptive\n3. Call the sub-workflow as a tool.\n4. Pass the values as tool arguments:\n    a. column_a: first dataset column name\n    b. column_b: second dataset column name\n5. Do not attempt to perform the statistical calculation yourself.\n6. Do not explain the analysis before calling the tool.\n7. After the tool returns its result, explain the result in clear, professional language. Explain important statistical values such as the correlation coefficient, test statistic, confidence interval, or p-value in terms understandable to the user. If the user has not provided enough information to identify the two variables or the analysis type, ask a concise clarification question instead of calling the tool.\nIMPORTANT TOOL USAGE RULE: When a statistical analysis request contains two identifiable dataset columns and an analysis type, call statistical_analysis_tool immediately. Do not repeatedly reason about whether to call the tool. The tool already have a complete dataset. The first five rows of the dataset are as follows for your reference: \n{{ JSON.stringify($node[\"CodeTopFiveRows\"].json) }}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -64,
+        -368
+      ],
+      "id": "88448f94-7d4b-4e5e-8f61-ef0ebc0882aa",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -816,
+        -368
+      ],
+      "id": "d6ae11dc-28d7-4d62-9426-ceaf4cadce72",
+      "name": "When chat message received",
+      "webhookId": "6dcdf537-8bd6-4c61-8121-5bb4c5ccc7eb"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "gpt-5.6-luna"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -96,
+        -112
+      ],
+      "id": "a34140ec-917d-44dc-8285-ee006ec90189",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "16k0SZkQjbnfxU6I",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# Loop over input items and add a new field called 'my_new_field' to the JSON of each one\nimport pandas as pd\nimport json\n\n# 1. Retrieve all incoming items from the previous node\nraw_items = _items\n\n# 2. Extract the 'json' dictionary from each n8n item object\njson_data = [item[\"json\"] for item in raw_items]\n\n# 3. Create the Pandas DataFrame\ndf = pd.DataFrame(json_data)\ndf_10 = df.head(5)\n\n# 4. Convert back to n8n format while PRESERVING item tracking metadata\noutput = []\nfor index, row in df_10.iterrows():\n    output.append({\n        \"json\": row.to_dict(),\n        \"pairedItem\": {\n            \"item\": index  # This tells downstream nodes exactly which original item this belongs to\n        }\n    })\n\nreturn output\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        -368
+      ],
+      "id": "c7e86008-a249-47d8-a5bb-edd4afb79953",
+      "name": "CodeTopFiveRows"
+    },
+    {
+      "parameters": {
+        "description": "call this tool to do correation test between two variables. The input for this tool is the names of two variables",
+        "workflowId": {
+          "__rl": true,
+          "value": "eiINqBicY6Pqsm1s",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/eiINqBicY6Pqsm1s"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "column_a": "={{$fromAI('column_a', 'First variable column name in a dataset') }}",
+            "column_b": "={{$fromAI('column_b', 'First variable column name in a dataset') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "column_a",
+              "displayName": "column_a",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "column_b",
+              "displayName": "column_b",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        144,
+        -128
+      ],
+      "id": "eacc4f9c-3ae5-4292-b394-21e481b81e2c",
+      "name": "Call 'DoCorrelation'"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "CodeTopFiveRows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CodeTopFiveRows": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'DoCorrelation'": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4c88cf47-3b5e-4c28-bf43-d062a1630ea0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1ee6d140a4e059ea8cb88f8f10033ef9f7d8a7b7fb5a1e33071610020febef13"
+  },
+  "nodeGroups": [],
+  "id": "EemzBsEZq3mPWlx9",
+  "tags": []
+}
