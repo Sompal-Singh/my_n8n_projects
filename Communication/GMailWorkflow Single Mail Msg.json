@@ -1,0 +1,196 @@
+{
+  "name": "GMailWorkflow Single Mail Msg",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Please read this email \"{{ $json.Content }}\" and provide a very short, concise summary containing only the most important information. Keep the summary as brief as possible without losing essential details. ",
+        "options": {}
+      },
+      "id": "7e83492c-56e1-488d-88fd-2bc0117e5bd9",
+      "name": "AI Agent1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        192,
+        32
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "labelIds": [
+            "CATEGORY_PERSONAL"
+          ],
+          "sender": "sompal151074@gmail.com"
+        },
+        "options": {
+          "downloadAttachments": false
+        }
+      },
+      "id": "7d83fd13-29bc-48c4-b584-0a6d1694edcc",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "position": [
+        -512,
+        48
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "c1d2e3f4-g5h6-i7j8-k9l0-m1n2o3p4q5r6",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json[\"Sender Name\"] }}",
+              "rightValue": "Dr Sompal Singh"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2ac44ded-36b5-4f90-ab5c-8a55240a8ce7",
+      "name": "Check Valid Email",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -48,
+        48
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        80,
+        256
+      ],
+      "id": "27ff629c-deca-4200-b2be-fe35fc2ad6bc",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = [];\n\nfor (const item of $input.all()) {\n  const emailData = item.json;\n  \n  // Handle sender information (unchanged)\n  let senderEmail = '';\n  let senderName = '';\n\n  if (emailData.from?.value?.[0]) {\n    senderEmail = emailData.from.value[0].address || '';\n    senderName = emailData.from.value[0].name || senderEmail;\n  } else if (emailData.from?.text) {\n    const emailMatch = emailData.from.text.match(/<([^>]+)>/) || \n                      emailData.from.text.match(/([^\\s]+@[^\\s]+)/);\n    senderEmail = emailMatch ? emailMatch[1] : emailData.from.text;\n    \n    const nameMatch = emailData.from.text.match(/^([^<]+)/);\n    senderName = nameMatch ? nameMatch[1].trim().replace(/\\\"/g, '') : senderEmail;\n  }\n\n  // Format date (unchanged)\n  const receivedDate = new Date(emailData.date || emailData.receivedTime);\n  const formattedDate = receivedDate.toLocaleString('en-US', {\n    year: 'numeric',\n    month: '2-digit',\n    day: '2-digit',\n    hour: '2-digit',\n    minute: '2-digit',\n    hour12: true\n  });\n\n  // FIXED CONTENT EXTRACTION\n  let emailContent = '';\n  \n  // 1. First priority: Plain text version\n  if (emailData.text) {\n    emailContent = emailData.text;\n  } \n  // 2. Second priority: HTML version (convert to plain text)\n  else if (emailData.html) {\n    emailContent = emailData.html\n      .replace(/<style[^>]*>.*?<\\/style>/gs, '')  // Remove CSS\n      .replace(/<[^>]*>/g, ' ')                   // Strip HTML tags\n      .replace(/\\s+/g, ' ')                       // Collapse whitespace\n      .trim();\n  }\n  // 3. Fallback to other possible fields\n  else if (emailData.body || emailData.textPlain || emailData.textHtml) {\n    emailContent = emailData.body || emailData.textPlain || emailData.textHtml;\n  }\n\n  // Truncate content if too long\n  const maxContentLength = 5000;\n  if (emailContent.length > maxContentLength) {\n    emailContent = emailContent.substring(0, maxContentLength) + '... [truncated]';\n  }\n\n  // Create row data\n  const rowData = {\n    'Date': formattedDate,\n    'Sender Name': senderName,\n    'Sender Email': senderEmail,\n    'Subject': emailData.subject || 'No Subject',\n    'Content': emailContent,\n    //'Message ID': emailData.messageId || '',\n    'Has Attachments': emailData.attachments?.length > 0 ? 'Yes' : 'No'\n  };\n  \n  items.push({ json: rowData });\n}\n\nreturn items;"
+      },
+      "id": "dd46fe7e-701e-40c1-b539-3412b1084ebb",
+      "name": "CodeToArrangeData",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -288,
+        48
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Summary of Emails",
+        "completionMessage": "={{ $json.output }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        560,
+        32
+      ],
+      "id": "bd0abd61-bc22-4f1b-9edd-511f8db4f171",
+      "name": "Form",
+      "webhookId": "04f327a3-3be4-491c-94c9-fdeb4ff6d289"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "CodeToArrangeData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Valid Email": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CodeToArrangeData": {
+      "main": [
+        [
+          {
+            "node": "Check Valid Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "72f64247-3817-455a-9ad6-1abe07a5b8e1",
+  "meta": {
+    "instanceId": "1ee6d140a4e059ea8cb88f8f10033ef9f7d8a7b7fb5a1e33071610020febef13"
+  },
+  "nodeGroups": [],
+  "id": "wI9s3T9FXS033NS1",
+  "tags": []
+}

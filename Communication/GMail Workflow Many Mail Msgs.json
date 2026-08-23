@@ -1,0 +1,260 @@
+{
+  "name": "GMail Workflow Many Mail Msgs",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Please read these emails \"{{ $json.Content }}\" and provide a very short, concise summary containing only the most important information from each one of these. Keep the summary as brief as possible without losing essential details. However please also include Sender Email ID and Sent Date.",
+        "options": {}
+      },
+      "id": "9fc595c0-5bb6-49b2-9617-cd99ab6fc4b5",
+      "name": "AI Agent1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        -288,
+        -368
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -464,
+        -144
+      ],
+      "id": "ef3de7fd-dc7b-40e1-bd4e-da865435e91c",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "n9mWzO7vWJIWWqe4",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "import re\nfrom datetime import datetime\nfrom email.utils import parsedate_to_datetime\nimport json # Added to decode the text string\n\nfor item in _items:\n    # 1. Unpack the legacy n8n 'json' wrapper\n    internal_json = item.get('json', {})\n    \n    # 2. Extract your fields from the inner dictionary\n    complete_data = internal_json.get('emails_content', [])\n\nemails_content_raw = json.loads(complete_data)\n\nitems = []\n\nfor item in emails_content_raw:\n    email_data = item[\"json\"]\n\n    # ---------------------------------------\n    # Handle sender information\n    # ---------------------------------------\n    sender_email = \"\"\n    sender_name = \"\"\n\n    from_data = email_data.get(\"from\")\n\n    if isinstance(from_data, dict) and from_data.get(\"value\"):\n        first_sender = from_data[\"value\"][0] if isinstance(from_data[\"value\"], list) else {}\n\n        sender_email = first_sender.get(\"address\", \"\")\n        sender_name = first_sender.get(\"name\", \"\") or sender_email\n\n    elif isinstance(from_data, dict) and from_data.get(\"text\"):\n        from_text = from_data[\"text\"]\n\n        # Try to extract email from <email@example.com>\n        email_match = re.search(r\"<([^>]+)>\", from_text)\n\n        # Otherwise try to extract a normal email address\n        if not email_match:\n            email_match = re.search(r\"([^\\s]+@[^\\s]+)\", from_text)\n\n        sender_email = email_match.group(1) if email_match else from_text\n\n        # Extract sender name from the part before <\n        name_match = re.search(r\"^([^<]+)\", from_text)\n\n        if name_match:\n            sender_name = name_match.group(1).strip().replace('\"', '')\n        else:\n            sender_name = sender_email\n\n    # ---------------------------------------\n    # Format date\n    # ---------------------------------------\n    date_value = email_data.get(\"date\") or email_data.get(\"receivedTime\")\n\n    formatted_date = \"\"\n\n    if date_value:\n        try:\n            # Handle RFC email dates such as:\n            # Wed, 13 Aug 2026 10:30:00 +0530\n            received_date = parsedate_to_datetime(str(date_value))\n\n            formatted_date = received_date.strftime(\"%m/%d/%Y, %I:%M %p\")\n\n        except Exception:\n            try:\n                # Handle ISO dates\n                received_date = datetime.fromisoformat(\n                    str(date_value).replace(\"Z\", \"+00:00\")\n                )\n\n                formatted_date = received_date.strftime(\"%m/%d/%Y, %I:%M %p\")\n\n            except Exception:\n                # If date cannot be parsed, retain original value\n                formatted_date = str(date_value)\n\n    # ---------------------------------------\n    # Content extraction\n    # ---------------------------------------\n    email_content = \"\"\n\n    # 1. First priority: Plain text\n    if email_data.get(\"text\"):\n        email_content = str(email_data[\"text\"])\n\n    # 2. Second priority: HTML\n    elif email_data.get(\"html\"):\n        email_content = str(email_data[\"html\"])\n\n        # Remove <style>...</style>\n        email_content = re.sub(\n            r\"<style[^>]*>.*?</style>\",\n            \"\",\n            email_content,\n            flags=re.DOTALL | re.IGNORECASE\n        )\n\n        # Remove HTML tags\n        email_content = re.sub(\n            r\"<[^>]*>\",\n            \" \",\n            email_content\n        )\n\n        # Collapse whitespace\n        email_content = re.sub(\n            r\"\\s+\",\n            \" \",\n            email_content\n        ).strip()\n\n    # 3. Fallback fields\n    elif (\n        email_data.get(\"body\")\n        or email_data.get(\"textPlain\")\n        or email_data.get(\"textHtml\")\n    ):\n        email_content = (\n            email_data.get(\"body\")\n            or email_data.get(\"textPlain\")\n            or email_data.get(\"textHtml\")\n            or \"\"\n        )\n\n    email_content = str(email_content)\n\n    # ---------------------------------------\n    # Truncate content\n    # ---------------------------------------\n    max_content_length = 5000\n\n    if len(email_content) > max_content_length:\n        email_content = (\n            email_content[:max_content_length]\n            + \"... [truncated]\"\n        )\n\n    # ---------------------------------------\n    # Create row data\n    # ---------------------------------------\n    attachments = email_data.get(\"attachments\")\n\n    has_attachments = (\n        \"Yes\"\n        if isinstance(attachments, list) and len(attachments) > 0\n        else \"No\"\n    )\n\n    row_data = {\n        \"Date\": formatted_date,\n        \"Sender Name\": sender_name,\n        \"Sender Email\": sender_email,\n        \"Subject\": email_data.get(\"subject\") or \"No Subject\",\n        \"Content\": email_content,\n        # \"Message ID\": email_data.get(\"messageId\", \"\"),\n        \"Has Attachments\": has_attachments,\n    }\n\n    items.append({\n        \"json\": row_data\n    })\n\nreturn items"
+      },
+      "id": "f2494d86-6323-4cd2-bcbe-09f79b7d315b",
+      "name": "CodeToArrangeData",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -496,
+        -368
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": "={{ $json[\"How many number of last emails you want to summarize?\"] }}",
+        "simple": false,
+        "filters": {
+          "labelIds": [
+            "Label_5995360008649282963"
+          ],
+          "readStatus": "unread"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -1072,
+        -368
+      ],
+      "id": "68f2814b-c9e1-44bb-827e-bbe163158509",
+      "name": "Get many messages",
+      "webhookId": "fec6d891-b8d9-49d3-8774-ecb31cb10eea",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "nK1fwhbZwgC8BSmN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Summary of Emails",
+        "completionMessage": "={{ $json.output }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        64,
+        -368
+      ],
+      "id": "9973fff0-846b-4cb1-947b-70cc717a9bcb",
+      "name": "Form",
+      "webhookId": "04f327a3-3be4-491c-94c9-fdeb4ff6d289"
+    },
+    {
+      "parameters": {
+        "formTitle": "Check Emails",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "How many number of last emails you want to summarize?",
+              "fieldType": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -1280,
+        -368
+      ],
+      "id": "47d8f573-2a23-48e8-a0c5-81eb25117bc0",
+      "name": "On form submission",
+      "webhookId": "798d6c1a-0bc2-4cd1-8337-9624b03b5645"
+    },
+    {
+      "parameters": {
+        "operation": "markAsRead",
+        "messageId": "={{ $json.id }}"
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -880,
+        -368
+      ],
+      "id": "13411bc3-8b7a-4ea9-9572-5b33eaf62e73",
+      "name": "Mark a message as read",
+      "webhookId": "06ac40e7-f9f8-4aeb-95c7-75cc0c2ae12d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "nK1fwhbZwgC8BSmN",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "369bc164-ea47-4915-8944-47fc9b957d2a",
+              "name": "emails_content",
+              "value": "={{ $('Get many messages').all() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -688,
+        -368
+      ],
+      "id": "fd29c9de-72e4-4cd8-9e64-e785a2afdefe",
+      "name": "Edit Fields"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CodeToArrangeData": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many messages": {
+      "main": [
+        [
+          {
+            "node": "Mark a message as read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Get many messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark a message as read": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "CodeToArrangeData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "88e5eb9e-dad1-4727-9df0-321b6c098627",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1ee6d140a4e059ea8cb88f8f10033ef9f7d8a7b7fb5a1e33071610020febef13"
+  },
+  "nodeGroups": [],
+  "id": "if8p5S7RNgVrGpSj",
+  "tags": []
+}
