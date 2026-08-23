@@ -1,0 +1,107 @@
+{
+  "name": "LinkedIn Post a Message V2",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -960,
+        -256
+      ],
+      "id": "d3623033-db96-46fe-bbd4-bf90cd60f41f",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "person": "=Wt_Ko3Yn6a",
+        "text": "I wish all of you a very Good Day. I am working on Agentic AI. This is my first Automatic Post from N8N. I am using FREE N8N. If anyone wants to learn more please visit my Youtube play list: https://www.youtube.com/playlist?list=PLE6-APH2fSUM\nHappy learning!",
+        "shareMediaCategory": "IMAGE",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -256
+      ],
+      "id": "702e42f1-7f32-497a-af10-2c01f47c0882",
+      "name": "Create a post",
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "id": "z99BsDWjTSwAHfdM",
+          "name": "LinkedIn account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-image-1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-IMAGE-1-MINI"
+        },
+        "prompt": "Create an image showing an agentic ai workflow posting automatically to a social media",
+        "options": {
+          "quality": "low",
+          "size": "1024x1024"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        -752,
+        -256
+      ],
+      "id": "100f1d17-9690-4cd7-a7b8-d06d82d66c32",
+      "name": "Generate an image",
+      "credentials": {
+        "openAiApi": {
+          "id": "16k0SZkQjbnfxU6I",
+          "name": "OpenAI account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Generate an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate an image": {
+      "main": [
+        [
+          {
+            "node": "Create a post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f8f5fae6-3092-4b0f-853f-3da3848613c4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1ee6d140a4e059ea8cb88f8f10033ef9f7d8a7b7fb5a1e33071610020febef13"
+  },
+  "nodeGroups": [],
+  "id": "jpg7AbtCvE0qgPSN",
+  "tags": []
+}

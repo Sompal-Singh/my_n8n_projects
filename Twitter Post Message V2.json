@@ -1,0 +1,156 @@
+{
+  "name": "Twitter Post Message V2",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1040,
+        -288
+      ],
+      "id": "90a71ad1-0fe9-4fad-97c3-7dbe5063ad9d",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "text": "I wish all of you a very Good Day. I am working on Agentic AI. This is my first Automatic Post from N8N. I am using FREE N8N. Please visit my Youtube channel. Happy Learning!",
+        "additionalFields": {
+          "attachments": "={{ $json.data.id }}"
+        }
+      },
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        -288
+      ],
+      "id": "102aa9e0-2bbf-4dbd-8ca1-f52605c3c7c2",
+      "name": "Create Tweet",
+      "credentials": {
+        "twitterOAuth2Api": {
+          "id": "AgJ4574PpDBzebCp",
+          "name": "X account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.x.com/2/media/upload",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "media_category",
+              "value": "tweet_image"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "media",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -576,
+        -288
+      ],
+      "id": "ccefc9f7-175f-4de2-99c5-fb8704a2bf3f",
+      "name": "HTTP Request",
+      "credentials": {
+        "oAuth2Api": {
+          "id": "oDX9q6BwVLJ9UD4k",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-image-1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-IMAGE-1-MINI"
+        },
+        "prompt": "Create an image showing an agentic ai workflow posting automatically to a social media",
+        "options": {
+          "quality": "low",
+          "size": "1024x1024"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        -832,
+        -288
+      ],
+      "id": "059569d1-ec21-467e-a822-5af711d2d70c",
+      "name": "Generate an image",
+      "credentials": {
+        "openAiApi": {
+          "id": "16k0SZkQjbnfxU6I",
+          "name": "OpenAI account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Generate an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Create Tweet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate an image": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "1029d2a2-83e0-471f-ad76-e3b47ea875eb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1ee6d140a4e059ea8cb88f8f10033ef9f7d8a7b7fb5a1e33071610020febef13"
+  },
+  "nodeGroups": [],
+  "id": "OR5eZkuYLrNRoH7Y",
+  "tags": []
+}
