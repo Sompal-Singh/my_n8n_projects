@@ -1,0 +1,133 @@
+{
+  "name": "Get List of Tasks",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Number of Tasks (limit)",
+        "formDescription": "Please tell me the number of Tasks to be fetched.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Please specify number of tasks",
+              "fieldType": "number",
+              "defaultValue": "30"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -896,
+        -192
+      ],
+      "id": "a2e079d4-0bb1-42b5-bd67-3af13c76cf6b",
+      "name": "On form submission",
+      "webhookId": "35852de5-41c4-4e53-a967-7d57dbb32085"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "task": "MDA1OTY2MjQ5NzEwODM2MjkzNzE6MDow",
+        "limit": "={{ $json['Please specify number of tasks'] }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.googleTasks",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        -192
+      ],
+      "id": "6f6cb1d1-981e-4393-bf76-c919dd06b66b",
+      "name": "Get many tasks",
+      "credentials": {
+        "googleTasksOAuth2Api": {
+          "id": "BOjr1rVtTVarWmHZ",
+          "name": "Google Tasks account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "The Tasks:",
+        "completionMessage": "={{ \n  '<h3>Tasks Due</h3>' + \n  $json.events.map(event => `\n    <div style=\"margin-bottom: 15px; padding: 10px; border-left: 4px solid #4A90E2; background-color: #f9f9f9; text-align: left;\"><br><br>\n      <strong style=\"font-size: 16px; color: #333;\">${event.Title}</strong><br>\n      <span style=\"color: #666; font-size: 14px;\">\n        📅 <b>Date/Time:</b> ${event.Updated || event.startDate}\n      </span><br>\n      <span style=\"color: #888; font-size: 12px;\">\n        📅 <b>Due Date:</b> ${event[\"Due Date\"]}\n      </span><br><br>\n    </div>\n  `).join('') \n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        -176,
+        -192
+      ],
+      "id": "31a1fa87-2ea4-48a4-8edc-355ef4ffcfad",
+      "name": "Form",
+      "webhookId": "7435722a-5424-4265-8f00-d66aba5bbfd6"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# Get all input items from Google Calendar\nevents = []\n\nfor item in _items:\n    data = item[\"json\"]\n\n    # Extract event details\n    title = data.get(\"title\", \"\")\n    updated = data.get(\"updated\", \"\")\n    due = data.get(\"due\", \"\")\n    \n    # Create a clean event object\n    event = {\n        \"Title\": title,\n        \"Updated\": updated,\n        \"Due Date\": due,\n    }\n\n    events.append(event)\n\n# Return as a single JSON object\nreturn [\n    {\n        \"json\": {\n            \"events\": events\n        }\n    }\n]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        -192
+      ],
+      "id": "e061fb4d-443a-4fd4-ac37-6ba3214a7f82",
+      "name": "Code in Python"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Get many tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python": {
+      "main": [
+        [
+          {
+            "node": "Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many tasks": {
+      "main": [
+        [
+          {
+            "node": "Code in Python",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "a48e4bd0-3aaa-49d0-b906-26f51b76f635",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1ee6d140a4e059ea8cb88f8f10033ef9f7d8a7b7fb5a1e33071610020febef13"
+  },
+  "nodeGroups": [],
+  "id": "cnmCdl2oqFKnggVw",
+  "tags": []
+}
