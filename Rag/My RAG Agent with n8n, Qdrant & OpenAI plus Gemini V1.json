@@ -1,0 +1,387 @@
+{
+  "name": "My RAG Agent with n8n, Qdrant & OpenAI plus Gemini V1",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "insert",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "n8n-rag-blood-bank",
+          "mode": "id"
+        },
+        "embeddingBatchSize": 50,
+        "options": {}
+      },
+      "id": "32016da6-d95e-4a9a-9195-7a84988aee18",
+      "name": "Insert into Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "position": [
+        -384,
+        -112
+      ],
+      "typeVersion": 1.3,
+      "credentials": {
+        "qdrantApi": {
+          "id": "aJfbxJqzXno9Ckq1",
+          "name": "Qdrant account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "This tool searches the document knowledge base. Use it to retrieve specific information, facts, quotes, or details that are stored in the uploaded documents. This tool retrieves relevant content when answering questions that require specific facts or details from uploaded documents. The information is retrieved based on semantic similarity to your query.",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "n8n-rag-blood-bank",
+          "mode": "id"
+        },
+        "topK": 10,
+        "options": {}
+      },
+      "id": "461b0b5f-7792-4057-b909-3016d0bda340",
+      "name": "Search Documents",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "position": [
+        624,
+        -80
+      ],
+      "typeVersion": 1.3,
+      "credentials": {
+        "qdrantApi": {
+          "id": "aJfbxJqzXno9Ckq1",
+          "name": "Qdrant account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 20
+      },
+      "id": "8baa31ed-209f-4d09-bf9d-07a583cd9e84",
+      "name": "Store Conversation",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "position": [
+        448,
+        112
+      ],
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        272,
+        112
+      ],
+      "id": "3dd7654b-efd2-4849-b6c1-7167de453714",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "n9mWzO7vWJIWWqe4",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $('CodeExtractText').item.json.text}}",
+        "textSplittingMode": "custom",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "file_name",
+                "value": "={{ $('ReadandWriteFiles').item.json.fileName }}"
+              },
+              {
+                "name": "file_type",
+                "value": "={{ $('ReadandWriteFiles').item.json.fileType }}"
+              },
+              {
+                "name": "=size",
+                "value": "={{ $('ReadandWriteFiles').item.json.fileSize }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "655f6616-d823-4d6a-ae5e-f3003de69620",
+      "name": "Load File Content & Metadata",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "position": [
+        -176,
+        128
+      ],
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "chunkSize": 1500,
+        "chunkOverlap": 300,
+        "options": {
+          "splitCode": "markdown"
+        }
+      },
+      "id": "36a1dac2-3024-4dce-a603-dd7a6d3b8caa",
+      "name": "Split into Chunks",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "position": [
+        -320,
+        288
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "fileSelector": "/home/node/.n8n-files/blood_bank_rules/*.pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1088,
+        -112
+      ],
+      "id": "78c73221-6b83-47a6-9920-27c08ee566d0",
+      "name": "ReadandWriteFiles"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -784,
+        -112
+      ],
+      "id": "ce9340cb-36de-45c5-bc52-9ca1814ebb22",
+      "name": "ExtractFromFile"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "return [\n    {\n        \"json\": {\n            \"text\": item[\"json\"][\"text\"]\n        }\n    }\n    for item in _items\n]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        -112
+      ],
+      "id": "3cd9c178-f8f1-430b-83af-a7b3a42e2211",
+      "name": "CodeExtractText"
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-large",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        624,
+        192
+      ],
+      "id": "af4d7f42-3bda-42f6-8a53-f8edd9e30ff6",
+      "name": "Embeddings OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "16k0SZkQjbnfxU6I",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -1216,
+        -304
+      ],
+      "id": "8ee9d44f-c313-4b5b-955e-5ce4a4322aa2",
+      "name": "When chat message received",
+      "webhookId": "39afb849-ea65-4c23-b1df-a1a9e6c61d7b",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        240,
+        -304
+      ],
+      "id": "205dfa48-8e83-442b-a871-31272376fd36",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-large",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        128
+      ],
+      "id": "007c2fff-1faa-45ab-be97-4e7e31cad998",
+      "name": "Embeddings OpenAI1",
+      "credentials": {
+        "openAiApi": {
+          "id": "16k0SZkQjbnfxU6I",
+          "name": "OpenAI account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Search Documents": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Conversation": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split into Chunks": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Load File Content & Metadata",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load File Content & Metadata": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert into Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ReadandWriteFiles": {
+      "main": [
+        [
+          {
+            "node": "ExtractFromFile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ExtractFromFile": {
+      "main": [
+        [
+          {
+            "node": "CodeExtractText",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CodeExtractText": {
+      "main": [
+        [
+          {
+            "node": "Insert into Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Search Documents",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert into Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "9118b92d-0b5a-4872-9894-bb6781ee3a9e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1ee6d140a4e059ea8cb88f8f10033ef9f7d8a7b7fb5a1e33071610020febef13"
+  },
+  "nodeGroups": [],
+  "id": "bGHjsQvrgSA19KKY",
+  "tags": []
+}
