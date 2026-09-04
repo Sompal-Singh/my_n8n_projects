@@ -1,0 +1,141 @@
+{
+  "name": "Get List of Calendar Events",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "sompal151074@gmail.com",
+          "mode": "list",
+          "cachedResultName": "sompal151074@gmail.com"
+        },
+        "timeMax": "={{ $now.plus({ day: $json['Please specify number of days'] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -768,
+        -224
+      ],
+      "id": "fb3090a2-3995-47c0-bfa8-26808a29b52a",
+      "name": "Get many events",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "X2oLqArrlUUcCRFQ",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "Number of Days",
+        "formDescription": "Please tell me the number of days for which future events to be fetched.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Please specify number of days",
+              "fieldType": "number",
+              "defaultValue": "30"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -976,
+        -224
+      ],
+      "id": "54a395ed-68bd-45a2-8caf-342566629b8c",
+      "name": "On form submission",
+      "webhookId": "5bcd76d1-c6ea-4589-bf63-23b8a45812a4"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "The Events:",
+        "completionMessage": "={{ \n  '<h3>Upcoming Events</h3>' + \n  $json.events.map(event => `\n    <div style=\"margin-bottom: 15px; padding: 10px; border-left: 4px solid #4A90E2; background-color: #f9f9f9; text-align: left;\"><br><br>\n      <strong style=\"font-size: 16px; color: #333;\">${event.summary}</strong><br>\n      <span style=\"color: #666; font-size: 14px;\">\n        📅 <b>Date/Time:</b> ${event.startDateTime || event.startDate}\n      </span><br>\n      <span style=\"color: #888; font-size: 12px;\">\n        👤 <b>Organizer:</b> ${event.creator.email}\n      </span><br><br>\n    </div>\n  `).join('') \n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        -400,
+        -224
+      ],
+      "id": "dd3cb158-2339-438a-92c7-2ec53bd0ac7f",
+      "name": "Form",
+      "webhookId": "7435722a-5424-4265-8f00-d66aba5bbfd6"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# Get all input items from Google Calendar\nevents = []\n\nfor item in _items:\n    data = item[\"json\"]\n\n    # Extract event details\n    summary = data.get(\"summary\", \"\")\n    \n    start = data.get(\"start\", {})\n    start_datetime = start.get(\"dateTime\", \"\")\n    start_date = start.get(\"date\", \"\")\n  \n    creator = data.get(\"creator\", {})\n\n    # Extract creator details\n    creator_email = creator.get(\"email\", \"\")\n    \n    # Create a clean event object\n    event = {\n        \"summary\": summary,\n        \"startDateTime\": start_datetime,\n        \"startDate\": start_date,\n        \"creator\": {\n            \"email\": creator_email\n        }\n    }\n\n    events.append(event)\n\n# Return as a single JSON object\nreturn [\n    {\n        \"json\": {\n            \"events\": events\n        }\n    }\n]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        -224
+      ],
+      "id": "322d084a-9aaf-40bf-b8a2-676b33a4f61b",
+      "name": "Code in Python"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Get many events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many events": {
+      "main": [
+        [
+          {
+            "node": "Code in Python",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python": {
+      "main": [
+        [
+          {
+            "node": "Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "timezone": "Asia/Kolkata",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "a74dd190-1cd8-4992-be00-e99f62b8d372",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1ee6d140a4e059ea8cb88f8f10033ef9f7d8a7b7fb5a1e33071610020febef13"
+  },
+  "nodeGroups": [],
+  "id": "828LCOqTHCSvNFLX",
+  "tags": []
+}
